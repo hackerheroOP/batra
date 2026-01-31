@@ -14,5 +14,5 @@ ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", "0"))
 SOURCE_CHANNEL_ID = int(os.getenv("SOURCE_CHANNEL_ID", "0")) 
 
 OWNER_ID = int(os.getenv("OWNER_ID", "0"))
-MONGO_URL = os.getenv("MONGO_URL", "mongodb://localhost:27017")
+MONGO_URL = os.getenv("MONGO_URL", "mongodb+srv://pewiy55240:kswo56IGBu4BLQgW@cluster0.jv4874f.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 DB_NAME = "bot_database"
