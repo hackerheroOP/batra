@@ -22,13 +22,13 @@ async def init_db():
             "last_run": 0
         })
 
-async def add_pending_subscription(user_id, channel_id, plan_type, gc_code, gc_pin):
+async def add_pending_subscription(user_id, channel_id, plan_type, payment_method, payment_details):
     result = await db.subscriptions.insert_one({
         "user_id": user_id,
         "channel_id": channel_id,
         "plan_type": plan_type,
-        "gc_code": gc_code,
-        "gc_pin": gc_pin,
+        "payment_method": payment_method,
+        "payment_details": payment_details,
         "status": "pending",
         "start_date": time.time(),
         "expiry_date": None
