@@ -14,23 +14,41 @@ STATE_WAITING_GC_CODE = "WAITING_GC_CODE"
 STATE_WAITING_GC_PIN = "WAITING_GC_PIN"
 
 async def show_plans(client: Client, callback_query: CallbackQuery):
-    await callback_query.message.edit_text(
-        "📅 **Choose a Subscription Plan**",
-        reply_markup=InlineKeyboardMarkup([
-            [InlineKeyboardButton("📅 Monthly Plan", callback_data="plan_monthly")]
-        ])
-    )
+    try:
+        await callback_query.message.edit_text(
+            "📅 **Choose a Subscription Plan**",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📅 Monthly Plan", callback_data="plan_monthly")]
+            ])
+        )
+    except Exception as e:
+        print(f"Edit text error: {e}")
+        # Fallback if edit fails (e.g. message too old or same content)
+        await callback_query.message.reply_text(
+             "📅 **Choose a Subscription Plan**",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📅 Monthly Plan", callback_data="plan_monthly")]
+            ])
+        )
 
 async def ask_channel(client: Client, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     user_states[user_id] = {"state": STATE_WAITING_CHANNEL, "data": {"plan": "monthly"}}
     
-    await callback_query.message.edit_text(
-        "1️⃣ **Setup Step 1:**\n"
-        "Please add this bot to your target channel as an Admin.\n"
-        "Then, send me the **Channel ID** (starts with -100...).\n\n"
-        "If you don't know how to get the ID, forward a message from that channel here."
-    )
+    try:
+        await callback_query.message.edit_text(
+            "1️⃣ **Setup Step 1:**\n"
+            "Please add this bot to your target channel as an Admin.\n"
+            "Then, send me the **Channel ID** (starts with -100...).\n\n"
+            "If you don't know how to get the ID, forward a message from that channel here."
+        )
+    except Exception:
+         await callback_query.message.reply_text(
+            "1️⃣ **Setup Step 1:**\n"
+            "Please add this bot to your target channel as an Admin.\n"
+            "Then, send me the **Channel ID** (starts with -100...).\n\n"
+            "If you don't know how to get the ID, forward a message from that channel here."
+        )
 
 async def handle_text_input(client: Client, message: Message):
     user_id = message.from_user.id
