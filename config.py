@@ -5,7 +5,7 @@ load_dotenv()
 
 API_ID = int(os.getenv("API_ID", "27247089"))
 API_HASH = os.getenv("API_HASH", "2456e376e82f580ea1d1ed9d6444df8f")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "8244759300:AAHEcyRQIBXZolnDx3_cEBGq-267XPBQXyM")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "7054914860:AAFC-EOt2NQiizkGVdCsbplmPZbs2Z0cnl0")
 
 # Channel where payment proofs are sent for verification
 ADMIN_CHANNEL_ID = int(os.getenv("ADMIN_CHANNEL_ID", "-1003860392199")) 
