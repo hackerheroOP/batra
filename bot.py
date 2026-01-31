@@ -1,6 +1,14 @@
 import asyncio
-from pyrogram import Client, idle
-from config import API_ID, API_HASH, BOT_TOKEN
+import logging
+from pyrogram import Client, idle, filters
+from config import API_ID, API_HASH, BOT_TOKEN, OWNER_ID
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+)
+logger = logging.getLogger(__name__)
+
 from database import init_db
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from scheduler_tasks import daily_post_job, expiry_check_job
@@ -18,6 +26,11 @@ app = Client(
     in_memory=True
 )
 
+@app.on_message(filters.command("ping"))
+async def ping_handler(client, message):
+    logger.info(f"Ping received from {message.from_user.id}")
+    await message.reply_text("🏓 Pong! Bot is alive.")
+
 # Global scheduler
 scheduler = AsyncIOScheduler()
 
@@ -28,6 +41,13 @@ async def main():
     # Start Bot
     await app.start()
     print("Bot Started")
+    
+    # Notify Owner
+    try:
+        if OWNER_ID:
+            await app.send_message(OWNER_ID, "🤖 Bot restarted successfully!")
+    except Exception as e:
+        logger.error(f"Failed to send startup message: {e}")
 
     # Start Web Server
     await start_server()
