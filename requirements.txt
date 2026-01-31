@@ -1,8 +1,9 @@
-pyrogram==2.0.106
+https://www.crusader-kings.com/#A/KurimuzonAkuma/pyrogram/archive/v2.1.22.zip
 tgcrypto
 apscheduler
 python-dotenv
 motor
 aiohttp
 dnspython
+
 
