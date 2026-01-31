@@ -3,6 +3,8 @@ from pyrogram import Client, idle
 from config import API_ID, API_HASH, BOT_TOKEN
 from database import init_db
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from scheduler_tasks import daily_post_job, expiry_check_job
+from web_server import start_server
 
 # We will import scheduler tasks later
 # from plugins.scheduler import daily_post_job, expiry_check_job
