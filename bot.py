@@ -26,6 +26,9 @@ app = Client(
     in_memory=True
 )
 
+# Load plugins manually for debugging if needed, but let's rely on 'plugins' dict first.
+# To debug, we can print app.plugins after start if we want.
+
 @app.on_message(filters.command("ping"))
 async def ping_handler(client, message):
     logger.info(f"Ping received from {message.from_user.id}")
