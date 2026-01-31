@@ -1,5 +1,6 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from pyrogram.handlers import MessageHandler, CallbackQueryHandler
 from config import ADMIN_CHANNEL_ID, OWNER_ID
 from database import add_pending_subscription, get_subscription, activate_subscription, reject_subscription, get_active_subscriptions
 
@@ -12,7 +13,6 @@ STATE_WAITING_CHANNEL = "WAITING_CHANNEL"
 STATE_WAITING_GC_CODE = "WAITING_GC_CODE"
 STATE_WAITING_GC_PIN = "WAITING_GC_PIN"
 
-@Client.on_callback_query(filters.regex("^buy_sub$"))
 async def show_plans(client: Client, callback_query: CallbackQuery):
     await callback_query.message.edit_text(
         "📅 **Choose a Subscription Plan**",
@@ -21,7 +21,6 @@ async def show_plans(client: Client, callback_query: CallbackQuery):
         ])
     )
 
-@Client.on_callback_query(filters.regex("^plan_monthly$"))
 async def ask_channel(client: Client, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
     user_states[user_id] = {"state": STATE_WAITING_CHANNEL, "data": {"plan": "monthly"}}
@@ -33,7 +32,6 @@ async def ask_channel(client: Client, callback_query: CallbackQuery):
         "If you don't know how to get the ID, forward a message from that channel here."
     )
 
-@Client.on_message(filters.text & filters.private)
 async def handle_text_input(client: Client, message: Message):
     user_id = message.from_user.id
     if user_id not in user_states:
@@ -98,126 +96,85 @@ async def handle_text_input(client: Client, message: Message):
             user_id=user_id,
             channel_id=data["channel_id"],
             plan_type=data["plan"],
-            gc_code=data["gc_code"],
-            gc_pin=gc_pin
-        )
-        
-        # Clear state
-        del user_states[user_id]
-        
-        await message.reply_text(
-            "✅ **Payment Details Submitted!**\n\n"
-            "Your subscription is pending verification. You will be notified once approved."
+            payment_method=data["payment_method"],
+            payment_details=f"Code: {data['gc_code']}, PIN: {gc_pin}"
         )
         
         # Notify Admin
         admin_text = (
-            f"🔔 **New Subscription Request**\n\n"
+            f"🔔 **New Subscription Request**\n"
             f"👤 User: {message.from_user.mention} (`{user_id}`)\n"
-            f"📢 Channel: `{data['channel_id']}`\n"
-            f"📅 Plan: {data['plan']}\n"
-            f"💳 Method: {data.get('method', 'Gift Card')}\n"
-            f"🎟 Code: `{data['gc_code']}`\n"
-            f"🔐 PIN: `{gc_pin}`"
+            f"� Channel: `{data['channel_id']}`\n"
+            f" Method: {data['payment_method']}\n"
+            f"🔢 Code: `{data['gc_code']}`\n"
+            f"� PIN: `{gc_pin}`\n"
+            f"🆔 Sub ID: `{sub_id}`"
         )
         
-        await client.send_message(
-            ADMIN_CHANNEL_ID,
-            admin_text,
-            reply_markup=InlineKeyboardMarkup([
-                [
-                    InlineKeyboardButton("✅ Verify", callback_data=f"verify_{sub_id}"),
-                    InlineKeyboardButton("❌ Reject", callback_data=f"reject_{sub_id}")
-                ]
-            ])
-        )
-
-@Client.on_callback_query(filters.regex("^pay_flipkart$"))
-async def pay_flipkart(client: Client, callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    if user_id in user_states:
-        user_states[user_id]["state"] = STATE_WAITING_GC_CODE
-        user_states[user_id]["data"]["method"] = "Flipkart"
-        await callback_query.message.edit_text("🛒 **Selected: Flipkart Gift Card**\n\nPlease enter the **Gift Card Code**:")
-    else:
-        await callback_query.message.reply_text("Session expired. Please start over with /start")
-
-@Client.on_callback_query(filters.regex("^pay_amazon$"))
-async def pay_amazon(client: Client, callback_query: CallbackQuery):
-    user_id = callback_query.from_user.id
-    if user_id in user_states:
-        user_states[user_id]["state"] = STATE_WAITING_GC_CODE
-        user_states[user_id]["data"]["method"] = "Amazon Pay"
-        await callback_query.message.edit_text("🛒 **Selected: Amazon Pay Gift Card**\n\nPlease enter the **Gift Card Code**:")
-    else:
-        await callback_query.message.reply_text("Session expired. Please start over with /start")
-
-# --- Admin Handlers ---
-
-@Client.on_callback_query(filters.regex("^verify_"))
-async def admin_verify(client: Client, callback_query: CallbackQuery):
-    # Security check: ensure only admins in the admin channel can click this?
-    # Pyrogram callback queries from channels might be tricky if not careful, 
-    # but usually if the bot is admin in the channel, it receives it.
-    # We should ideally check if the user clicking is an admin, but for simplicity assuming the channel is private/restricted.
-    
-    sub_id = int(callback_query.data.split("_")[1])
-    sub = await get_subscription(sub_id)
-    
-    if not sub:
-        await callback_query.answer("Subscription not found or already processed.", show_alert=True)
-        return
-
-    if sub['status'] == 'active':
-        await callback_query.answer("Already verified.", show_alert=True)
-        return
-
-    await activate_subscription(sub_id)
-    
-    await callback_query.message.edit_text(
-        callback_query.message.text + "\n\n✅ **VERIFIED**"
-    )
-    
-    # Notify User
-    try:
-        await client.send_message(
-            sub['user_id'],
-            "🎉 **Subscription Approved!**\n\n"
-            "Your channel is now active. The bot will start posting videos automatically."
-        )
-    except Exception:
-        pass # User might have blocked bot
+        admin_markup = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("✅ Approve", callback_data=f"approve_{sub_id}"),
+                InlineKeyboardButton("❌ Reject", callback_data=f"reject_{sub_id}")
+            ]
+        ])
         
-    # Notify Channel (Optional per requirements)
-    try:
-        await client.send_message(
-            sub['channel_id'],
-            "✅ **Auto Post Bot is now Active!**"
-        )
-    except Exception:
-        pass
+        try:
+            await client.send_message(ADMIN_CHANNEL_ID, admin_text, reply_markup=admin_markup)
+        except Exception as e:
+            await message.reply_text(f"⚠️ Error sending to admin: {e}")
+            
+        del user_states[user_id]
+        await message.reply_text("✅ **Request Sent!**\nWe will verify your payment and activate your subscription shortly.")
 
-@Client.on_callback_query(filters.regex("^reject_"))
-async def admin_reject(client: Client, callback_query: CallbackQuery):
-    sub_id = callback_query.data.split("_")[1]
-    sub = await get_subscription(sub_id)
-    
-    if not sub:
-        await callback_query.answer("Subscription not found.", show_alert=True)
+async def ask_gc_details(client: Client, callback_query: CallbackQuery):
+    user_id = callback_query.from_user.id
+    if user_id not in user_states:
+        await callback_query.answer("Session expired. Please /start again.", show_alert=True)
         return
 
-    await reject_subscription(sub_id)
+    payment_method = "Amazon Pay" if "amazon" in callback_query.data else "Flipkart"
+    user_states[user_id]["data"]["payment_method"] = payment_method
+    user_states[user_id]["state"] = STATE_WAITING_GC_CODE
     
     await callback_query.message.edit_text(
-        callback_query.message.text + "\n\n❌ **REJECTED**"
+        f"� **Payment Method: {payment_method}**\n\n"
+        "Please enter the **Gift Card Code**:"
     )
+
+async def handle_admin_action(client: Client, callback_query: CallbackQuery):
+    data = callback_query.data
+    action, sub_id = data.split("_", 1)
     
-    # Notify User
-    try:
-        await client.send_message(
-            sub['user_id'],
-            "❌ **Subscription Rejected**\n\n"
-            "Your payment details could not be verified. Please contact support."
-        )
-    except Exception:
-        pass
+    # In MongoDB, sub_id is an ObjectId string.
+    
+    if action == "approve":
+        success = await activate_subscription(sub_id)
+        if success:
+            sub = await get_subscription(sub_id)
+            if sub:
+                try:
+                    await client.send_message(sub['user_id'], "🎉 **Your subscription has been activated!**\nThe bot will now start posting to your channel.")
+                except:
+                    pass
+            await callback_query.message.edit_text(f"{callback_query.message.text}\n\n✅ **APPROVED**")
+        else:
+            await callback_query.answer("Failed to approve.", show_alert=True)
+            
+    elif action == "reject":
+        success = await reject_subscription(sub_id)
+        if success:
+             sub = await get_subscription(sub_id)
+             if sub:
+                try:
+                    await client.send_message(sub['user_id'], "❌ **Your subscription request was rejected.**\nPlease contact support if you think this is a mistake.")
+                except:
+                    pass
+             await callback_query.message.edit_text(f"{callback_query.message.text}\n\n❌ **REJECTED**")
+
+def register(app: Client):
+    app.add_handler(CallbackQueryHandler(show_plans, filters.regex("^buy_sub$")))
+    app.add_handler(CallbackQueryHandler(ask_channel, filters.regex("^plan_monthly$")))
+    app.add_handler(MessageHandler(handle_text_input, filters.text & filters.private))
+    app.add_handler(CallbackQueryHandler(ask_gc_details, filters.regex("^pay_")))
+    app.add_handler(CallbackQueryHandler(handle_admin_action, filters.regex("^(approve|reject)_")))
+    print("✅ Plugin 'payment' registered")

@@ -1,9 +1,9 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
+from pyrogram.handlers import MessageHandler
 from config import SOURCE_CHANNEL_ID
 from database import add_video
 
-@Client.on_message(filters.chat(SOURCE_CHANNEL_ID) & (filters.video | filters.document))
 async def index_video(client: Client, message: Message):
     # Check if it's a video or a document that is a video
     video = message.video or message.document
@@ -29,3 +29,7 @@ async def index_video(client: Client, message: Message):
     else:
         # Duplicate or error
         pass
+
+def register(app: Client):
+    app.add_handler(MessageHandler(index_video, filters.chat(SOURCE_CHANNEL_ID) & (filters.video | filters.document)))
+    print("✅ Plugin 'indexing' registered")

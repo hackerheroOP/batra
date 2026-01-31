@@ -1,9 +1,9 @@
 from pyrogram import Client, filters
 from pyrogram.types import Message
+from pyrogram.handlers import MessageHandler
 from config import OWNER_ID
 from database import get_settings, update_settings
 
-@Client.on_message(filters.command("settings") & filters.user(OWNER_ID))
 async def show_settings(client: Client, message: Message):
     settings = await get_settings()
     if not settings:
@@ -20,7 +20,6 @@ async def show_settings(client: Client, message: Message):
     )
     await message.reply_text(text)
 
-@Client.on_message(filters.command("set_interval") & filters.user(OWNER_ID))
 async def set_interval(client: Client, message: Message):
     try:
         if len(message.command) < 2:
@@ -38,7 +37,6 @@ async def set_interval(client: Client, message: Message):
     except ValueError:
         await message.reply_text("❌ Invalid number format.")
 
-@Client.on_message(filters.command("set_posts") & filters.user(OWNER_ID))
 async def set_posts_count(client: Client, message: Message):
     try:
         if len(message.command) < 2:
@@ -55,3 +53,9 @@ async def set_posts_count(client: Client, message: Message):
         
     except ValueError:
         await message.reply_text("❌ Invalid number format.")
+
+def register(app: Client):
+    app.add_handler(MessageHandler(show_settings, filters.command("settings") & filters.user(OWNER_ID)))
+    app.add_handler(MessageHandler(set_interval, filters.command("set_interval") & filters.user(OWNER_ID)))
+    app.add_handler(MessageHandler(set_posts_count, filters.command("set_posts") & filters.user(OWNER_ID)))
+    print("✅ Plugin 'admin_settings' registered")
