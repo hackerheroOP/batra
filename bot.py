@@ -25,6 +25,9 @@ async def main():
     # Start Bot
     await app.start()
     print("Bot Started")
+
+    # Start Web Server
+    await start_server()
     
     # Start Scheduler
     # Run the checker frequently (e.g. every 5 minutes) so it can respond to interval changes

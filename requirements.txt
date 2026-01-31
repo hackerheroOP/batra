@@ -3,3 +3,4 @@ tgcrypto
 apscheduler
 python-dotenv
 motor
+aiohttp
