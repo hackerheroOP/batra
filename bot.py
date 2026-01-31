@@ -14,20 +14,22 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from scheduler_tasks import daily_post_job, expiry_check_job
 from web_server import start_server
 
-# We will import scheduler tasks later
-# from plugins.scheduler import daily_post_job, expiry_check_job
+# Import plugins manually
+from plugins import start, payment, indexing, admin_settings
 
 app = Client(
     "auto_post_bot",
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
-    plugins=dict(root="plugins"),
     in_memory=True
 )
 
-# Load plugins manually for debugging if needed, but let's rely on 'plugins' dict first.
-# To debug, we can print app.plugins after start if we want.
+# Register handlers manually
+start.register(app)
+payment.register(app)
+indexing.register(app)
+admin_settings.register(app)
 
 @app.on_message(filters.command("ping"))
 async def ping_handler(client, message):
