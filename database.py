@@ -19,6 +19,7 @@ async def init_db():
             "_id": "config",
             "posts_per_run": 1,
             "interval_hours": 24,
+            "delete_after_forward": False,
             "last_run": 0
         })
 
@@ -122,12 +123,14 @@ async def expire_subscriptions():
 async def get_settings():
     return await db.settings.find_one({"_id": "config"})
 
-async def update_settings(posts_per_run=None, interval_hours=None):
+async def update_settings(posts_per_run=None, interval_hours=None, delete_after_forward=None):
     update_data = {}
     if posts_per_run is not None:
         update_data["posts_per_run"] = posts_per_run
     if interval_hours is not None:
         update_data["interval_hours"] = interval_hours
+    if delete_after_forward is not None:
+        update_data["delete_after_forward"] = delete_after_forward
     
     if update_data:
         await db.settings.update_one(
@@ -140,3 +143,90 @@ async def update_last_run():
         {"_id": "config"},
         {"$set": {"last_run": time.time()}}
     )
+
+# --- Admin Management ---
+
+DEFAULT_PERMISSIONS = {
+    "change_interval": False,
+    "change_posts": False,
+    "add_admin": False,
+    "manage_payments": True
+}
+
+async def add_admin(user_id, added_by=None):
+    try:
+        # Check if exists to preserve permissions if re-added? No, reset or keep? 
+        # Let's keep existing permissions if exists, or set default.
+        existing = await db.admins.find_one({"user_id": user_id})
+        if existing:
+            return True
+
+        await db.admins.insert_one({
+            "user_id": user_id, 
+            "added_at": time.time(),
+            "added_by": added_by,
+            "permissions": DEFAULT_PERMISSIONS.copy()
+        })
+        return True
+    except Exception:
+        return False
+
+async def remove_admin(user_id):
+    result = await db.admins.delete_one({"user_id": user_id})
+    return result.deleted_count > 0
+
+async def get_all_admins():
+    cursor = db.admins.find({})
+    admins = []
+    async for doc in cursor:
+        admins.append(doc['user_id'])
+    return admins
+
+async def get_admin_details(user_id):
+    return await db.admins.find_one({"user_id": user_id})
+
+async def update_admin_permission(user_id, permission, value):
+    """
+    Update a single permission for an admin.
+    """
+    key = f"permissions.{permission}"
+    await db.admins.update_one(
+        {"user_id": user_id},
+        {"$set": {key: value}}
+    )
+
+async def check_admin_permission(user_id, permission):
+    from config import OWNER_ID
+    if user_id == OWNER_ID:
+        return True
+    
+    admin = await db.admins.find_one({"user_id": user_id})
+    if not admin:
+        return False
+    
+    # Return permission value, default to False if key missing
+    return admin.get("permissions", {}).get(permission, False)
+
+async def get_admins_with_permission(permission):
+    """
+    Get list of admin user_ids who have a specific permission.
+    Owner is always included.
+    """
+    from config import OWNER_ID
+    
+    query = {f"permissions.{permission}": True}
+    cursor = db.admins.find(query)
+    
+    admins = {OWNER_ID} # Use set to avoid duplicates if owner is in DB
+    async for doc in cursor:
+        admins.add(doc['user_id'])
+        
+    return list(admins)
+
+async def is_user_admin(user_id):
+    from config import OWNER_ID
+    if user_id == OWNER_ID:
+        return True
+    
+    doc = await db.admins.find_one({"user_id": user_id})
+    return doc is not None

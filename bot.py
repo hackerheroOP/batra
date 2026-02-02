@@ -1,6 +1,7 @@
 import asyncio
 import logging
 from pyrogram import Client, idle, filters
+from pyrogram.types import BotCommand, BotCommandScopeChat, BotCommandScopeDefault
 from config import API_ID, API_HASH, BOT_TOKEN, OWNER_ID
 
 logging.basicConfig(
@@ -39,6 +40,31 @@ async def ping_handler(client, message):
 # Global scheduler
 scheduler = AsyncIOScheduler()
 
+async def set_commands(client: Client):
+    # Default commands for all users
+    user_commands = [
+        BotCommand("start", "Start the bot & buy subscription"),
+        BotCommand("ping", "Check if bot is alive"),
+    ]
+    await client.set_bot_commands(user_commands, scope=BotCommandScopeDefault())
+
+    # Admin commands (We can't easily set them for "all admins" dynamically via API scopes except for chat admins,
+    # but we can set them for the Owner specifically. For other admins, they will see user commands unless we update per user ID)
+    # Since we have a dynamic list of admins, we could iterate them, but that might be API intensive on startup if many admins.
+    # For now, let's set for Owner.
+    
+    admin_commands = user_commands + [
+        BotCommand("settings", "⚙️ Manage Bot Settings"),
+        BotCommand("admins", "👮 Manage Admins"),
+        BotCommand("add_admin", "➕ Add Admin (Owner)"),
+        BotCommand("remove_admin", "➖ Remove Admin (Owner)"),
+    ]
+    
+    try:
+        await client.set_bot_commands(admin_commands, scope=BotCommandScopeChat(chat_id=OWNER_ID))
+    except Exception as e:
+        logger.error(f"Failed to set owner commands: {e}")
+
 async def main():
     # Initialize Database
     await init_db()
@@ -46,6 +72,13 @@ async def main():
     # Start Bot
     await app.start()
     print("Bot Started")
+    
+    # Set Bot Commands
+    try:
+        await set_commands(app)
+        print("✅ Bot commands set")
+    except Exception as e:
+        logger.error(f"Failed to set bot commands: {e}")
     
     # Notify Owner
     try:
