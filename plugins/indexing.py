@@ -2,7 +2,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message
 from pyrogram.handlers import MessageHandler
 from config import SOURCE_CHANNEL_ID
-from database import add_video
+from database import add_video, get_settings
 
 async def index_video(client: Client, message: Message):
     # Check if it's a video or a document that is a video
@@ -26,6 +26,15 @@ async def index_video(client: Client, message: Message):
     success = await add_video(file_id, file_name, message.id)
     if success:
         print(f"Indexed video: {file_name} (Msg ID: {message.id})")
+        
+        # Check if we should delete from source
+        settings = await get_settings()
+        if settings and settings.get('delete_after_forward', False):
+            try:
+                await message.delete()
+                print(f"Deleted message {message.id} from source channel.")
+            except Exception as e:
+                print(f"Failed to delete message {message.id}: {e}")
     else:
         # Duplicate or error
         pass

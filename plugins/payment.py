@@ -2,7 +2,7 @@ from pyrogram import Client, filters
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from pyrogram.handlers import MessageHandler, CallbackQueryHandler
 from config import ADMIN_CHANNEL_ID, OWNER_ID
-from database import add_pending_subscription, get_subscription, activate_subscription, reject_subscription, get_active_subscriptions
+from database import add_pending_subscription, get_subscription, activate_subscription, reject_subscription, get_active_subscriptions, get_all_admins, is_user_admin, check_admin_permission, get_admins_with_permission
 
 # Simple in-memory state management
 # Structure: user_id: {"state": "STATE_NAME", "data": {...}}
@@ -12,6 +12,7 @@ user_states = {}
 STATE_WAITING_CHANNEL = "WAITING_CHANNEL"
 STATE_WAITING_GC_CODE = "WAITING_GC_CODE"
 STATE_WAITING_GC_PIN = "WAITING_GC_PIN"
+STATE_WAITING_REJECTION_REASON = "WAITING_REJECTION_REASON"
 
 async def show_plans(client: Client, callback_query: CallbackQuery):
     try:
@@ -50,9 +51,18 @@ async def ask_channel(client: Client, callback_query: CallbackQuery):
             "If you don't know how to get the ID, forward a message from that channel here."
         )
 
+import logging
+logger = logging.getLogger(__name__)
+
 async def handle_text_input(client: Client, message: Message):
     user_id = message.from_user.id
     if user_id not in user_states:
+        return
+
+    # Handle /cancel command
+    if message.text and message.text.strip().lower() == "/cancel":
+        del user_states[user_id]
+        await message.reply_text("❌ Action cancelled.")
         return
 
     state_info = user_states[user_id]
@@ -118,14 +128,14 @@ async def handle_text_input(client: Client, message: Message):
             payment_details=f"Code: {data['gc_code']}, PIN: {gc_pin}"
         )
         
-        # Notify Admin
-        admin_text = (
+        # Notify Admins (DM)
+        admin_dm_text = (
             f"🔔 **New Subscription Request**\n"
             f"👤 User: {message.from_user.mention} (`{user_id}`)\n"
-            f"� Channel: `{data['channel_id']}`\n"
-            f" Method: {data['payment_method']}\n"
+            f"📺 Channel: `{data['channel_id']}`\n"
+            f"💳 Method: {data['payment_method']}\n"
             f"🔢 Code: `{data['gc_code']}`\n"
-            f"� PIN: `{gc_pin}`\n"
+            f"🔢 PIN: `{gc_pin}`\n"
             f"🆔 Sub ID: `{sub_id}`"
         )
         
@@ -135,14 +145,96 @@ async def handle_text_input(client: Client, message: Message):
                 InlineKeyboardButton("❌ Reject", callback_data=f"reject_{sub_id}")
             ]
         ])
-        
+
+        # Send to admins with payment permission
+        admins = await get_admins_with_permission("manage_payments")
+            
+        for admin_id in admins:
+            try:
+                 await client.send_message(admin_id, admin_dm_text, reply_markup=admin_markup)
+            except Exception as e:
+                 logger.error(f"Failed to send DM to admin {admin_id}: {e}")
+
+        # Notify Channel (Log with buttons too, so any admin can act from channel)
+        log_text = (
+            f"📝 **New Subscription Request (CHANNEL)**\n"
+            f"👤 User: {message.from_user.mention} (`{user_id}`)\n"
+            f"📺 Channel: `{data['channel_id']}`\n"
+            f"💳 Method: {data['payment_method']}\n"
+            f"🔢 Code: `{data['gc_code']}`\n"
+            f"🔢 PIN: `{gc_pin}`\n"
+            f"🆔 Sub ID: `{sub_id}`"
+        )
+
         try:
-            await client.send_message(ADMIN_CHANNEL_ID, admin_text, reply_markup=admin_markup)
+            # Log to Admin Channel with buttons
+            await client.send_message(
+                chat_id=ADMIN_CHANNEL_ID, 
+                text=log_text,
+                reply_markup=admin_markup
+            )
         except Exception as e:
-            await message.reply_text(f"⚠️ Error sending to admin: {e}")
+            logger.error(f"Failed to send to ADMIN_CHANNEL_ID {ADMIN_CHANNEL_ID}: {e}")
+            await message.reply_text(
+                f"⚠️ **System Error:** Could not log request.\n"
+                f"Error: `{e}`\n"
+                f"Target Channel: `{ADMIN_CHANNEL_ID}`\n\n"
+                "Please forward this message to the bot owner."
+            )
             
         del user_states[user_id]
         await message.reply_text("✅ **Request Sent!**\nWe will verify your payment and activate your subscription shortly.")
+
+    elif state == STATE_WAITING_REJECTION_REASON:
+        if not await check_admin_permission(user_id, "manage_payments"):
+            return
+
+        sub_id = data["sub_id"]
+        reason_text = message.text or message.caption or "No reason provided."
+        
+        # Proceed with rejection
+        success = await reject_subscription(sub_id)
+        if success:
+             sub = await get_subscription(sub_id)
+             if sub:
+                try:
+                    # Construct user notification
+                    rejection_msg = (
+                        "❌ **Your subscription request was rejected.**\n\n"
+                        f"**Reason:** {reason_text}\n\n"
+                        "Please contact support if you think this is a mistake."
+                    )
+                    
+                    if message.photo:
+                        await client.send_photo(
+                            chat_id=sub['user_id'],
+                            photo=message.photo.file_id,
+                            caption=rejection_msg
+                        )
+                    else:
+                        await client.send_message(
+                            chat_id=sub['user_id'],
+                            text=rejection_msg
+                        )
+                except Exception as e:
+                    logger.error(f"Failed to notify user {sub['user_id']}: {e}")
+
+             await message.reply_text("✅ **Rejection Sent!**\nThe user has been notified with your reason/proof.")
+             
+             try:
+                # Log to Admin Channel (Text only for simplicity, or we can copy the message)
+                log_msg = f"❌ **Request Rejected (LOG)**\n🆔 Sub ID: `{sub_id}`\n👮 Admin: {message.from_user.mention}\n📝 Reason: {reason_text}"
+                await client.send_message(ADMIN_CHANNEL_ID, log_msg)
+                # Optionally forward the proof if it was a photo
+                if message.photo:
+                     await message.copy(ADMIN_CHANNEL_ID, caption=f"Evidence for Sub ID: `{sub_id}`")
+             except:
+                pass
+        else:
+             await message.reply_text("❌ Failed to update subscription status in database.")
+        
+        del user_states[user_id]
+
 
 async def ask_gc_details(client: Client, callback_query: CallbackQuery):
     user_id = callback_query.from_user.id
@@ -166,6 +258,10 @@ async def handle_admin_action(client: Client, callback_query: CallbackQuery):
     # In MongoDB, sub_id is an ObjectId string.
     
     if action == "approve":
+        if not await check_admin_permission(callback_query.from_user.id, "manage_payments"):
+            await callback_query.answer("⚠️ You don't have permission to manage payments.", show_alert=True)
+            return
+
         success = await activate_subscription(sub_id)
         if success:
             sub = await get_subscription(sub_id)
@@ -175,24 +271,40 @@ async def handle_admin_action(client: Client, callback_query: CallbackQuery):
                 except:
                     pass
             await callback_query.message.edit_text(f"{callback_query.message.text}\n\n✅ **APPROVED**")
+            
+            try:
+                await client.send_message(ADMIN_CHANNEL_ID, f"✅ **Request Approved (LOG)**\n🆔 Sub ID: `{sub_id}`\n👮 Admin: {callback_query.from_user.mention}")
+            except:
+                pass
         else:
             await callback_query.answer("Failed to approve.", show_alert=True)
             
     elif action == "reject":
-        success = await reject_subscription(sub_id)
-        if success:
-             sub = await get_subscription(sub_id)
-             if sub:
-                try:
-                    await client.send_message(sub['user_id'], "❌ **Your subscription request was rejected.**\nPlease contact support if you think this is a mistake.")
-                except:
-                    pass
-             await callback_query.message.edit_text(f"{callback_query.message.text}\n\n❌ **REJECTED**")
+        if not await check_admin_permission(callback_query.from_user.id, "manage_payments"):
+            await callback_query.answer("⚠️ You don't have permission to manage payments.", show_alert=True)
+            return
+
+        # Start rejection flow - Ask for reason
+        user_states[callback_query.from_user.id] = {
+            "state": STATE_WAITING_REJECTION_REASON,
+            "data": {"sub_id": sub_id}
+        }
+        
+        await callback_query.message.edit_text(
+            f"{callback_query.message.text}\n\n"
+            "⚠️ **REJECTION IN PROGRESS**\n"
+            "Please send the **Reason** for rejection.\n"
+            "You can send a **Text Message** or a **Photo with Caption** (e.g., screenshot of invalid code).\n\n"
+            "Send /cancel to cancel rejection."
+        )
+        
+        # We don't reject immediately anymore. We wait for input.
 
 def register(app: Client):
     app.add_handler(CallbackQueryHandler(show_plans, filters.regex("^buy_sub$")))
     app.add_handler(CallbackQueryHandler(ask_channel, filters.regex("^plan_monthly$")))
-    app.add_handler(MessageHandler(handle_text_input, filters.text & filters.private))
+    # Updated to accept Photo as well for Admin Rejection Proof
+    app.add_handler(MessageHandler(handle_text_input, (filters.text | filters.photo) & filters.private))
     app.add_handler(CallbackQueryHandler(ask_gc_details, filters.regex("^pay_")))
     app.add_handler(CallbackQueryHandler(handle_admin_action, filters.regex("^(approve|reject)_")))
     print("✅ Plugin 'payment' registered")
