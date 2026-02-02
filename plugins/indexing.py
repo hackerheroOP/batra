@@ -52,19 +52,84 @@ async def index_content(client: Client, message: Message):
         # Duplicate or error
         pass
 
+async def get_all_history_safe(client: Client, chat_id: int):
+    """
+    Safely iterate over channel history for bots, bypassing get_chat_history restrictions
+    by fetching messages by ID in batches.
+    """
+    # 1. Try to find the latest message ID
+    last_msg_id = 0
+    try:
+        # Try search_messages (works for bots usually) to get latest
+        async for msg in client.search_messages(chat_id, limit=1):
+            last_msg_id = msg.id
+    except Exception:
+        pass
+
+    if last_msg_id == 0:
+        # Fallback: Assume a reasonably high number or just rely on consecutive empty check
+        # We'll use the empty streak check primarily if last_msg_id is unknown
+        pass
+    else:
+        print(f"DEBUG: Found last message ID: {last_msg_id}")
+
+    current_id = 1
+    batch_size = 200
+    empty_streak_batches = 0
+    MAX_EMPTY_STREAK_BATCHES = 5 # Stop after 1000 empty messages
+    
+    while True:
+        if last_msg_id > 0 and current_id > last_msg_id:
+            break
+            
+        ids = list(range(current_id, current_id + batch_size))
+        try:
+            messages = await client.get_messages(chat_id, ids)
+        except Exception as e:
+            print(f"DEBUG: get_messages failed for batch {current_id}: {e}")
+            # If we fail completely, we might stop or skip
+            # If channel is invalid, we stop
+            break
+            
+        if not messages:
+            break
+            
+        has_content = False
+        # Ensure messages is a list (get_messages can return single if ids is len 1, but we send list)
+        if not isinstance(messages, list):
+            messages = [messages]
+
+        for msg in messages:
+            # Check if message exists and is not empty
+            if msg and not msg.empty:
+                has_content = True
+                yield msg
+        
+        if not has_content:
+            empty_streak_batches += 1
+        else:
+            empty_streak_batches = 0
+            
+        # Stop condition if we don't know the end
+        if last_msg_id == 0 and empty_streak_batches >= MAX_EMPTY_STREAK_BATCHES:
+            print("DEBUG: Stopped due to empty streak")
+            break
+            
+        current_id += batch_size
+
 async def index_history_command(client: Client, message: Message):
     # Only Owner can run this
     if message.from_user.id != OWNER_ID:
         return
 
-    status_msg = await message.reply_text("⏳ **Starting historical indexing...**\nThis may take a while depending on channel size.")
+    status_msg = await message.reply_text("⏳ **Starting historical indexing...**\nThis may take a while depending on channel size.\nUsing ID-based scan (Bot Mode).")
     
     count = 0
     added_count = 0
     
     try:
-        # Iterate over all history
-        async for msg in client.get_chat_history(SOURCE_CHANNEL_ID):
+        # Iterate over all history using safe method
+        async for msg in get_all_history_safe(client, SOURCE_CHANNEL_ID):
             if msg.video or msg.photo or msg.document:
                 # We call index_content to reuse logic (including DB add and optional delete)
                 # Note: This might be slow if 'delete_after_forward' is ON and it tries to delete every message.
