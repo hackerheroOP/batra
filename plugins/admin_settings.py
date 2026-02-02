@@ -70,33 +70,56 @@ async def remove_admin_command(client: Client, message: Message):
     except ValueError:
         await message.reply_text("❌ Invalid User ID.")
 
-async def list_admins_command(client: Client, message: Message):
+async def get_admin_list_data(client: Client):
     admins = await get_all_admins()
     
     text = "👮 **Admin List**\nSelect an admin to manage permissions:\n\n"
+    text += f"👑 Owner: `{OWNER_ID}`\n"
     
     markup_rows = []
     
-    # Owner always first
-    text += f"👑 Owner: `{OWNER_ID}`\n"
+    other_admins = [uid for uid in admins if uid != OWNER_ID]
     
-    if admins:
-        for admin_id in admins:
-            if admin_id != OWNER_ID:
+    if other_admins:
+        # Try to fetch names
+        user_map = {}
+        try:
+            # Batch request is more efficient
+            users = await client.get_users(other_admins)
+            if not isinstance(users, list):
+                users = [users]
+            
+            for u in users:
+                if u: # check if None (rare)
+                    name = u.first_name or "Unknown"
+                    if u.last_name:
+                        name += f" {u.last_name}"
+                    user_map[u.id] = name
+        except Exception as e:
+            # If batch fails (e.g. one user invalid), try individually
+            for admin_id in other_admins:
                 try:
-                    user = await client.get_users(admin_id)
-                    name = user.first_name
+                    u = await client.get_users(admin_id)
+                    name = u.first_name or "Unknown"
+                    if u.last_name:
+                        name += f" {u.last_name}"
+                    user_map[admin_id] = name
                 except:
-                    name = f"User {admin_id}"
-                
-                # Add button for this admin
-                markup_rows.append([InlineKeyboardButton(f"👤 {name} ({admin_id})", callback_data=f"manage_admin_{admin_id}")])
+                    pass
+
+        for admin_id in other_admins:
+            name = user_map.get(admin_id, f"User {admin_id}")
+            markup_rows.append([InlineKeyboardButton(f"👤 {name} ({admin_id})", callback_data=f"manage_admin_{admin_id}")])
     else:
         text += "No other admins."
         
     markup_rows.append([InlineKeyboardButton("❌ Close", callback_data="close_settings")])
     
-    await message.reply_text(text, reply_markup=InlineKeyboardMarkup(markup_rows))
+    return text, InlineKeyboardMarkup(markup_rows)
+
+async def list_admins_command(client: Client, message: Message):
+    text, markup = await get_admin_list_data(client)
+    await message.reply_text(text, reply_markup=markup)
 
 async def manage_admin_callback(client: Client, callback_query: CallbackQuery):
     # Only Owner can manage permissions (as per requirement "owner can set which admin...")
@@ -159,18 +182,8 @@ async def show_admin_permissions(client: Client, callback_query: CallbackQuery, 
 
 async def back_to_list_callback(client: Client, callback_query: CallbackQuery):
     # Re-use list logic but edit message
-    admins = await get_all_admins()
-    text = "👮 **Admin List**\nSelect an admin to manage permissions:\n\n"
-    text += f"👑 Owner: `{OWNER_ID}`\n"
-    
-    markup_rows = []
-    if admins:
-        for admin_id in admins:
-            if admin_id != OWNER_ID:
-                markup_rows.append([InlineKeyboardButton(f"👤 User {admin_id}", callback_data=f"manage_admin_{admin_id}")])
-    
-    markup_rows.append([InlineKeyboardButton("❌ Close", callback_data="close_settings")])
-    await callback_query.message.edit_text(text, reply_markup=InlineKeyboardMarkup(markup_rows))
+    text, markup = await get_admin_list_data(client)
+    await callback_query.message.edit_text(text, reply_markup=markup)
 
 
 async def get_settings_markup(settings):
@@ -378,5 +391,10 @@ def register(app: Client):
     
     no_cmd = filters.create(no_cmd_filter)
 
-    app.add_handler(MessageHandler(handle_admin_input, no_cmd & is_admin))
+    async def admin_state_filter(_, __, message):
+        return message.from_user and message.from_user.id in admin_states
+
+    has_admin_state = filters.create(admin_state_filter)
+
+    app.add_handler(MessageHandler(handle_admin_input, no_cmd & is_admin & has_admin_state))
     print("✅ Plugin 'admin_settings' registered")

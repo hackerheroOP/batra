@@ -194,9 +194,15 @@ async def handle_text_input(client: Client, message: Message):
         reason_text = message.text or message.caption or "No reason provided."
         
         # Proceed with rejection
+        # IMPORTANT: We must get the subscription BEFORE deleting it to notify the user!
+        sub = await get_subscription(sub_id)
+        
         success = await reject_subscription(sub_id)
-        if success:
-             sub = await get_subscription(sub_id)
+        if success or sub: # If success is True OR if we found the sub (meaning it existed before delete)
+             # Even if reject_subscription returns False (maybe already deleted?), if we have 'sub', we can notify.
+             # But 'reject_subscription' just deletes. If it was already deleted, we can't notify properly if we didn't fetch it first.
+             # Wait, get_subscription returns None if not found.
+             
              if sub:
                 try:
                     # Construct user notification
@@ -220,19 +226,20 @@ async def handle_text_input(client: Client, message: Message):
                 except Exception as e:
                     logger.error(f"Failed to notify user {sub['user_id']}: {e}")
 
-             await message.reply_text("✅ **Rejection Sent!**\nThe user has been notified with your reason/proof.")
-             
-             try:
-                # Log to Admin Channel (Text only for simplicity, or we can copy the message)
-                log_msg = f"❌ **Request Rejected (LOG)**\n🆔 Sub ID: `{sub_id}`\n👮 Admin: {message.from_user.mention}\n📝 Reason: {reason_text}"
-                await client.send_message(ADMIN_CHANNEL_ID, log_msg)
-                # Optionally forward the proof if it was a photo
-                if message.photo:
-                     await message.copy(ADMIN_CHANNEL_ID, caption=f"Evidence for Sub ID: `{sub_id}`")
-             except:
-                pass
+                await message.reply_text("✅ **Rejection Sent!**\nThe user has been notified with your reason/proof.")
+                
+                try:
+                    # Log to Admin Channel
+                    log_msg = f"❌ **Request Rejected (LOG)**\n🆔 Sub ID: `{sub_id}`\n👮 Admin: {message.from_user.mention}\n📝 Reason: {reason_text}"
+                    await client.send_message(ADMIN_CHANNEL_ID, log_msg)
+                    if message.photo:
+                         await message.copy(ADMIN_CHANNEL_ID, caption=f"Evidence for Sub ID: `{sub_id}`")
+                except:
+                    pass
+             else:
+                 await message.reply_text("⚠️ **Error:** Subscription not found in database. It might have been already rejected or approved.")
         else:
-             await message.reply_text("❌ Failed to update subscription status in database.")
+             await message.reply_text("❌ Failed to delete subscription from database.")
         
         del user_states[user_id]
 
@@ -310,8 +317,13 @@ def register(app: Client):
 
     no_cmd = filters.create(no_cmd_filter)
 
+    async def state_filter(_, __, message):
+        return message.from_user and message.from_user.id in user_states
+
+    has_state = filters.create(state_filter)
+
     # Updated to accept Photo as well for Admin Rejection Proof
-    app.add_handler(MessageHandler(handle_text_input, (no_cmd | filters.photo) & filters.private))
+    app.add_handler(MessageHandler(handle_text_input, (no_cmd | filters.photo) & filters.private & has_state))
     app.add_handler(CallbackQueryHandler(ask_gc_details, filters.regex("^pay_")))
     app.add_handler(CallbackQueryHandler(handle_admin_action, filters.regex("^(approve|reject)_")))
     print("✅ Plugin 'payment' registered")
