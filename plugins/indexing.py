@@ -36,23 +36,81 @@ async def index_content(client: Client, message: Message):
     if not file_id:
         return
 
+    # Check settings
+    settings = await get_settings()
+    if not settings:
+        settings = {}
+        
+    # If this is called from the listener (real-time), we must check if auto_index is enabled.
+    # But how do we know if it's from listener or command?
+    # We can inspect the stack or pass an arg, but message handler doesn't support args easily.
+    # However, 'index_history_command' calls this function directly. 
+    # We can add an optional argument to 'index_content' but the handler signature is fixed (client, message).
+    # Wait, Python allows optional args in handlers? No, Pyrogram passes 2 args.
+    # BUT we can wrap it or just check a context var.
+    # EASIER: We check 'auto_index' here. 
+    # IF it's disabled, we should ONLY allow it if it's being run manually.
+    # But we can't easily distinguish.
+    # ALTERNATIVE: Make 'index_content' ONLY the handler, and extract the logic to 'process_message'
+    
+    # Refactoring below...
+    await process_message(client, message, settings)
+
+async def process_message(client: Client, message: Message, settings: dict, force: bool = False):
+    # Logic moved here
+    media_type = "video"
+    file_id = None
+    file_name = None
+    
+    if message.photo:
+        media_type = "photo"
+        file_id = message.photo.file_id
+        file_name = f"Photo {message.id}"
+    elif message.video:
+        media_type = "video"
+        file_id = message.video.file_id
+        file_name = message.video.file_name or f"Video {message.id}"
+    elif message.document:
+        mime = message.document.mime_type or ""
+        if "video" in mime:
+            media_type = "video"
+            file_id = message.document.file_id
+            file_name = message.document.file_name or f"Video {message.id}"
+        elif "image" in mime:
+             media_type = "photo"
+             file_id = message.document.file_id
+             file_name = message.document.file_name or f"Image {message.id}"
+        else:
+            return
+    else:
+        return
+
+    if not file_id:
+        return
+
+    # Check auto_index setting if not forced
+    if not force:
+        # Default to True if missing
+        if not settings.get('auto_index', True):
+            # Auto-index is OFF, and this is not a forced (manual) run
+            return
+
     success = await add_video(file_id, file_name, message.id, media_type)
     if success:
         print(f"Indexed {media_type}: {file_name} (Msg ID: {message.id})")
         
-        # Check if we should delete from source
-        settings = await get_settings()
-        if settings and settings.get('delete_after_forward', False):
+        if settings.get('delete_after_forward', False):
             try:
                 await message.delete()
                 print(f"Deleted message {message.id} from source channel.")
             except Exception as e:
                 print(f"Failed to delete message {message.id}: {e}")
-    else:
-        # Duplicate or error
-        pass
 
-async def get_all_history_safe(client: Client, chat_id: int):
+async def index_content(client: Client, message: Message):
+    settings = await get_settings()
+    await process_message(client, message, settings, force=False)
+
+async def index_history_command(client: Client, message: Message):
     """
     Safely iterate over channel history for bots, bypassing get_chat_history restrictions
     by fetching messages by ID in batches.
@@ -127,13 +185,15 @@ async def index_history_command(client: Client, message: Message):
     count = 0
     added_count = 0
     
+    # We fetch settings once
+    settings = await get_settings()
+    
     try:
         # Iterate over all history using safe method
         async for msg in get_all_history_safe(client, SOURCE_CHANNEL_ID):
             if msg.video or msg.photo or msg.document:
-                # We call index_content to reuse logic (including DB add and optional delete)
-                # Note: This might be slow if 'delete_after_forward' is ON and it tries to delete every message.
-                await index_content(client, msg)
+                # We call process_message with force=True to bypass auto_index check
+                await process_message(client, msg, settings, force=True)
                 added_count += 1
             
             count += 1

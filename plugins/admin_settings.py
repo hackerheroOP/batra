@@ -190,8 +190,10 @@ async def get_settings_markup(settings):
     interval = settings.get('interval_hours', 24)
     posts = settings.get('posts_per_run', 1)
     delete_after = settings.get('delete_after_forward', False)
+    auto_index = settings.get('auto_index', True)
     
     delete_text = "✅ On" if delete_after else "❌ Off"
+    auto_index_text = "✅ On" if auto_index else "❌ Off"
     
     markup = InlineKeyboardMarkup([
         [
@@ -202,6 +204,9 @@ async def get_settings_markup(settings):
         ],
         [
             InlineKeyboardButton(f"🗑️ Delete from Source: {delete_text}", callback_data="toggle_delete")
+        ],
+        [
+            InlineKeyboardButton(f"📥 Auto-Index New Media: {auto_index_text}", callback_data="toggle_auto_index")
         ],
         [
             InlineKeyboardButton("❌ Close", callback_data="close_settings")
@@ -284,6 +289,28 @@ async def settings_callback(client: Client, callback_query: CallbackQuery):
                  f"👤 Admin: {callback_query.from_user.mention}\n"
                  f"🛠️ Setting: **Delete from Source**\n"
                  f"📉 Old: {'✅ On' if delete_after else '❌ Off'}\n"
+                 f"📈 New: {'✅ On' if new_val else '❌ Off'}"
+             )
+             await client.send_message(ADMIN_CHANNEL_ID, log_msg)
+        except Exception:
+             pass
+
+    elif data == "toggle_auto_index":
+        if not await check_admin_permission(callback_query.from_user.id, "change_posts"):
+            await callback_query.answer("❌ You don't have permission to change this setting.", show_alert=True)
+            return
+
+        current_val = settings.get('auto_index', True)
+        new_val = not current_val
+        await update_settings(auto_index=new_val)
+        
+        # Log change
+        try:
+             log_msg = (
+                 f"⚙️ **Setting Changed**\n"
+                 f"👤 Admin: {callback_query.from_user.mention}\n"
+                 f"🛠️ Setting: **Auto-Index New Media**\n"
+                 f"📉 Old: {'✅ On' if current_val else '❌ Off'}\n"
                  f"📈 New: {'✅ On' if new_val else '❌ Off'}"
              )
              await client.send_message(ADMIN_CHANNEL_ID, log_msg)
@@ -381,7 +408,7 @@ def register(app: Client):
     app.add_handler(MessageHandler(list_admins_command, filters.command("admins") & is_admin))
     
     app.add_handler(MessageHandler(show_settings, filters.command("settings") & is_admin))
-    app.add_handler(CallbackQueryHandler(settings_callback, filters.regex(r"^(set_interval_input|set_posts_input|toggle_delete|close_settings|ignore)")))
+    app.add_handler(CallbackQueryHandler(settings_callback, filters.regex(r"^(set_interval_input|set_posts_input|toggle_delete|toggle_auto_index|close_settings|ignore)")))
     app.add_handler(CallbackQueryHandler(manage_admin_callback, filters.regex(r"^(manage_admin_|toggle_perm_)")))
     app.add_handler(CallbackQueryHandler(back_to_list_callback, filters.regex(r"^back_to_admin_list$")))
 
