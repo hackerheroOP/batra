@@ -71,16 +71,24 @@ async def get_active_subscriptions():
         subs.append(sub)
     return subs
 
-async def add_video(file_id, file_name, message_id):
+async def add_video(file_id, file_name, message_id, media_type="video"):
     try:
         await db.videos.insert_one({
             "file_id": file_id,
             "file_name": file_name,
-            "message_id": message_id
+            "message_id": message_id,
+            "media_type": media_type
         })
         return True
     except Exception:
         # Duplicate error likely due to unique index
+        return False
+
+async def delete_all_videos():
+    try:
+        await db.videos.delete_many({})
+        return True
+    except Exception:
         return False
 
 async def get_next_video_for_sub(subscription_id):

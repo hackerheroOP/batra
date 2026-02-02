@@ -40,12 +40,22 @@ async def daily_post_job(client):
                 break
                 
             try:
-                print(f"Posting video {video['id']} to channel {sub['channel_id']} ({i+1}/{posts_per_run})")
-                await client.send_video(
-                    chat_id=sub['channel_id'],
-                    video=video['file_id'],
-                    caption=video['file_name']
-                )
+                media_type = video.get('media_type', 'video')
+                print(f"Posting {media_type} {video['id']} to channel {sub['channel_id']} ({i+1}/{posts_per_run})")
+                
+                if media_type == 'photo':
+                    await client.send_photo(
+                        chat_id=sub['channel_id'],
+                        photo=video['file_id'],
+                        caption=video.get('file_name', '')
+                    )
+                else:
+                    await client.send_video(
+                        chat_id=sub['channel_id'],
+                        video=video['file_id'],
+                        caption=video['file_name']
+                    )
+
                 await record_post(sub['id'], video['id'])
                 
                 # Small delay to prevent flood limits

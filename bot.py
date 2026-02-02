@@ -59,6 +59,8 @@ async def set_commands(client: Client):
         BotCommand("admins", "👮 Manage Admins"),
         BotCommand("add_admin", "➕ Add Admin (Owner)"),
         BotCommand("remove_admin", "➖ Remove Admin (Owner)"),
+        BotCommand("index_all", "🗂️ Index All Channel History"),
+        BotCommand("delete_index", "🗑️ Delete All Indexed Files"),
     ]
     
     try:
