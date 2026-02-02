@@ -16,7 +16,7 @@ from scheduler_tasks import daily_post_job, expiry_check_job
 from web_server import start_server
 
 # Import plugins manually
-from plugins import start, payment, indexing, admin_settings
+from plugins import start, payment, indexing, admin_settings, user_commands
 
 app = Client(
     "auto_post_bot",
@@ -31,6 +31,7 @@ start.register(app)
 payment.register(app)
 indexing.register(app)
 admin_settings.register(app)
+user_commands.register(app)
 
 @app.on_message(filters.command("ping"))
 async def ping_handler(client, message):
@@ -45,6 +46,7 @@ async def set_commands(client: Client):
     # Default commands for all users
     user_commands = [
         BotCommand("start", "Start the bot & buy subscription"),
+        BotCommand("my_subs", "📋 View Active Subscriptions"),
         BotCommand("ping", "Check if bot is alive"),
     ]
     await client.set_bot_commands(user_commands, scope=BotCommandScopeDefault())

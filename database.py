@@ -72,6 +72,17 @@ async def get_active_subscriptions():
         subs.append(sub)
     return subs
 
+async def get_user_subscriptions(user_id):
+    """
+    Get all active subscriptions for a specific user.
+    """
+    cursor = db.subscriptions.find({"user_id": user_id, "status": "active"})
+    subs = []
+    async for sub in cursor:
+        sub['id'] = str(sub['_id'])
+        subs.append(sub)
+    return subs
+
 async def add_video(file_id, file_name, message_id, media_type="video"):
     try:
         await db.videos.insert_one({
