@@ -20,6 +20,7 @@ async def init_db():
             "posts_per_run": 1,
             "interval_hours": 24,
             "delete_after_forward": False,
+            "auto_index": True,
             "last_run": 0
         })
 
@@ -133,7 +134,7 @@ async def expire_subscriptions():
 async def get_settings():
     return await db.settings.find_one({"_id": "config"})
 
-async def update_settings(posts_per_run=None, interval_hours=None, delete_after_forward=None):
+async def update_settings(posts_per_run=None, interval_hours=None, delete_after_forward=None, auto_index=None):
     update_data = {}
     if posts_per_run is not None:
         update_data["posts_per_run"] = posts_per_run
@@ -141,6 +142,8 @@ async def update_settings(posts_per_run=None, interval_hours=None, delete_after_
         update_data["interval_hours"] = interval_hours
     if delete_after_forward is not None:
         update_data["delete_after_forward"] = delete_after_forward
+    if auto_index is not None:
+        update_data["auto_index"] = auto_index
     
     if update_data:
         await db.settings.update_one(
