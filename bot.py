@@ -34,6 +34,7 @@ admin_settings.register(app)
 
 @app.on_message(filters.command("ping"))
 async def ping_handler(client, message):
+    print(f"DEBUG: Ping received from {message.from_user.id}")
     logger.info(f"Ping received from {message.from_user.id}")
     await message.reply_text("🏓 Pong! Bot is alive.")
 
@@ -69,6 +70,8 @@ async def main():
     # Initialize Database
     await init_db()
     
+    print(f"DEBUG: OWNER_ID is {OWNER_ID} (type: {type(OWNER_ID)})")
+
     # Start Bot
     await app.start()
     print("Bot Started")
