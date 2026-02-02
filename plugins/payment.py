@@ -55,11 +55,12 @@ import logging
 logger = logging.getLogger(__name__)
 
 async def handle_text_input(client: Client, message: Message):
+    # print(f"DEBUG: Payment handle_text_input checking for {message.from_user.id}")
     user_id = message.from_user.id
     if user_id not in user_states:
         return
 
-    # Handle /cancel command
+    state_data = user_states[user_id]# Handle /cancel command
     if message.text and message.text.strip().lower() == "/cancel":
         del user_states[user_id]
         await message.reply_text("❌ Action cancelled.")
@@ -303,8 +304,14 @@ async def handle_admin_action(client: Client, callback_query: CallbackQuery):
 def register(app: Client):
     app.add_handler(CallbackQueryHandler(show_plans, filters.regex("^buy_sub$")))
     app.add_handler(CallbackQueryHandler(ask_channel, filters.regex("^plan_monthly$")))
+
+    async def no_cmd_filter(_, __, message):
+        return message.text and not message.text.startswith("/")
+
+    no_cmd = filters.create(no_cmd_filter)
+
     # Updated to accept Photo as well for Admin Rejection Proof
-    app.add_handler(MessageHandler(handle_text_input, (filters.text | filters.photo) & filters.private))
+    app.add_handler(MessageHandler(handle_text_input, (no_cmd | filters.photo) & filters.private))
     app.add_handler(CallbackQueryHandler(ask_gc_details, filters.regex("^pay_")))
     app.add_handler(CallbackQueryHandler(handle_admin_action, filters.regex("^(approve|reject)_")))
     print("✅ Plugin 'payment' registered")

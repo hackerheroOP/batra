@@ -7,7 +7,9 @@ from database import get_settings, update_settings, add_admin, remove_admin, get
 async def admin_filter(_, __, message: Message):
     if not message.from_user:
         return False
-    return await is_user_admin(message.from_user.id)
+    is_adm = await is_user_admin(message.from_user.id)
+    # print(f"DEBUG: admin_filter for {message.from_user.id} -> {is_adm}")
+    return is_adm
 
 # Create a filter object for reuse
 is_admin = filters.create(admin_filter)
@@ -369,5 +371,12 @@ def register(app: Client):
     app.add_handler(CallbackQueryHandler(settings_callback, filters.regex(r"^(set_interval_input|set_posts_input|toggle_delete|close_settings|ignore)")))
     app.add_handler(CallbackQueryHandler(manage_admin_callback, filters.regex(r"^(manage_admin_|toggle_perm_)")))
     app.add_handler(CallbackQueryHandler(back_to_list_callback, filters.regex(r"^back_to_admin_list$")))
-    app.add_handler(MessageHandler(handle_admin_input, filters.text & is_admin))
+
+    # Handler for admin text input (for editing settings) - Exclude commands
+    async def no_cmd_filter(_, __, message):
+        return message.text and not message.text.startswith("/")
+    
+    no_cmd = filters.create(no_cmd_filter)
+
+    app.add_handler(MessageHandler(handle_admin_input, no_cmd & is_admin))
     print("✅ Plugin 'admin_settings' registered")
