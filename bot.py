@@ -70,8 +70,6 @@ async def main():
     # Initialize Database
     await init_db()
     
-    print(f"DEBUG: OWNER_ID is {OWNER_ID} (type: {type(OWNER_ID)})")
-
     # Start Bot
     await app.start()
     print("Bot Started")

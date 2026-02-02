@@ -49,7 +49,7 @@ async def get_subscription(sub_id):
 async def activate_subscription(sub_id, duration_days=30):
     start_time = time.time()
     expiry_time = start_time + (duration_days * 24 * 60 * 60)
-    await db.subscriptions.update_one(
+    result = await db.subscriptions.update_one(
         {"_id": ObjectId(sub_id)},
         {"$set": {
             "status": "active",
@@ -57,9 +57,11 @@ async def activate_subscription(sub_id, duration_days=30):
             "expiry_date": expiry_time
         }}
     )
+    return result.modified_count > 0 or result.matched_count > 0
 
 async def reject_subscription(sub_id):
-    await db.subscriptions.delete_one({"_id": ObjectId(sub_id)})
+    result = await db.subscriptions.delete_one({"_id": ObjectId(sub_id)})
+    return result.deleted_count > 0
 
 async def get_active_subscriptions():
     cursor = db.subscriptions.find({"status": "active"})
