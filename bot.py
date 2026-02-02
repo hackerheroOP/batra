@@ -92,8 +92,8 @@ async def main():
     await start_server()
     
     # Start Scheduler
-    # Run the checker frequently (e.g. every 5 minutes) so it can respond to interval changes
-    scheduler.add_job(daily_post_job, "interval", minutes=5, args=[app])
+    # Run the checker frequently (e.g. every 30 seconds) to support low intervals like 0.01h
+    scheduler.add_job(daily_post_job, "interval", seconds=30, args=[app])
     scheduler.add_job(expiry_check_job, "interval", hours=1, args=[app])
     scheduler.start()
     

@@ -17,7 +17,12 @@ async def daily_post_job(client):
     posts_per_run = settings.get("posts_per_run", 1)
     
     # Check if time passed
-    if (time.time() - last_run) < (interval_hours * 3600):
+    time_passed = time.time() - last_run
+    required_interval = interval_hours * 3600
+    
+    # print(f"DEBUG: Scheduler Check - Passed: {time_passed:.1f}s, Required: {required_interval:.1f}s")
+    
+    if time_passed < required_interval:
         # Not time yet
         return
 
